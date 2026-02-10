@@ -1,0 +1,10 @@
+profiles:
+  - name: dev
+    host: 10.0.5.105
+    user: shepworth
+    keyPath: ~/.ssh/id_ed25519
+    forwards:
+      - bind: 127.0.0.1
+        localPort: 3000
+        remoteHost: 127.0.0.1
+        remotePort: 3000
