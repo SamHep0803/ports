@@ -1,12 +1,14 @@
 package main
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -32,70 +34,113 @@ type Forward struct {
 	RemotePort int    `yaml:"remotePort"`
 }
 
-type State struct {
-	Running map[string]int `json:"running"`
+type Manager struct {
+	mu      sync.Mutex
+	running map[string]*exec.Cmd
+}
+
+func NewManager() *Manager {
+	return &Manager{running: make(map[string]*exec.Cmd)}
+}
+
+func (m *Manager) Start(p Profile) (int, error) {
+	m.mu.Lock()
+	if _, ok := m.running[p.Name]; ok {
+		m.mu.Unlock()
+		return 0, fmt.Errorf("already running")
+	}
+	m.mu.Unlock()
+
+	cmd, err := startSSH(p)
+	if err != nil {
+		fatal("start SSH", err)
+	}
+
+	m.mu.Lock()
+	m.running[p.Name] = cmd
+	m.mu.Unlock()
+
+	go func() { _ = cmd.Wait() }()
+
+	return cmd.Process.Pid, nil
+}
+
+func (m *Manager) Stop(name string) error {
+	m.mu.Lock()
+	cmd, ok := m.running[name]
+	if ok {
+		delete(m.running, name)
+	}
+	m.mu.Unlock()
+
+	if !ok {
+		return errors.New("not running")
+	}
+
+	return stopCmd(cmd)
+}
+
+func (m *Manager) StopAll() {
+	m.mu.Lock()
+	cmds := make([]*exec.Cmd, 0, len(m.running))
+	for _, cmd := range m.running {
+		cmds = append(cmds, cmd)
+	}
+	m.running = make(map[string]*exec.Cmd)
+	m.mu.Unlock()
+
+	for _, cmd := range cmds {
+		_ = stopCmd(cmd)
+	}
+}
+
+func stopCmd(cmd *exec.Cmd) error {
+	if cmd == nil || cmd.Process == nil {
+		return nil
+	}
+	pid := cmd.Process.Pid
+
+	if err := syscall.Kill(-pid, syscall.SIGTERM); err == nil {
+		return nil
+	}
+	return cmd.Process.Signal(syscall.SIGTERM)
 }
 
 func main() {
-	cmd := os.Args[1]
 	configPath := "config.yaml"
-	statePath := "state.json"
-
 	cfg, err := loadConfig(configPath)
 	if err != nil {
 		fatal("load config", err)
 	}
 
-	st, err := loadState(statePath)
+	mgr := NewManager()
+	defer mgr.StopAll()
+
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigc
+		fmt.Println("shutting down - stopping tunnels...")
+		mgr.StopAll()
+		os.Exit(0)
+	}()
+
+	if len(os.Args) < 3 {
+		fmt.Println("check args")
+		os.Exit(2)
+	}
+
+	p, ok := findProfile(cfg, os.Args[2])
+	if !ok {
+		fatal("start", fmt.Errorf("unknown profile"))
+	}
+	pid, err := mgr.Start(*p)
 	if err != nil {
-		fatal("load state", err)
+		fatal("start", err)
 	}
+	fmt.Printf("started %s (pid %d)", p.Name, pid)
 
-	switch cmd {
-	case "start":
-		name := os.Args[2]
-		p, ok := findProfile(cfg, name)
-		if !ok {
-			fatal("start", fmt.Errorf("unknown profile"))
-		}
-		if pid, ok := st.Running[name]; ok && isRunning(pid) {
-			fatal("start", fmt.Errorf("already running"))
-		}
-
-		pid, err := startSSH(*p)
-		if err != nil {
-			fatal("start ssh", err)
-		}
-
-		st.Running[name] = pid
-		if err := saveState(statePath, st); err != nil {
-			_ = stopPID(pid)
-			fatal("save state", err)
-		}
-
-		fmt.Printf("started %s (pid %d)\n", name, pid)
-	}
-}
-
-func stopPID(pid int) error {
-	if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
-		return nil
-	}
-
-	return syscall.Kill(pid, syscall.SIGTERM)
-}
-
-func saveState(path string, st State) error {
-	tmp := path + ".tmp"
-	b, err := json.MarshalIndent(st, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-
-	return os.Rename(tmp, path)
+	select {}
 }
 
 func fatal(op string, err error) {
@@ -127,28 +172,7 @@ func findProfile(cfg Config, name string) (*Profile, bool) {
 	return nil, false
 }
 
-func loadState(path string) (State, error) {
-	st := State{Running: map[string]int{}}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return st, nil
-		}
-		return State{}, err
-	}
-
-	if err := json.Unmarshal(b, &st); err != nil {
-		return State{}, err
-	}
-
-	if st.Running == nil {
-		st.Running = map[string]int{}
-	}
-
-	return st, nil
-}
-
-func startSSH(p Profile) (int, error) {
+func startSSH(p Profile) (*exec.Cmd, error) {
 	args := []string{
 		"-N",
 		"-T",
@@ -175,15 +199,15 @@ func startSSH(p Profile) (int, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	if err := cmd.Start(); err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	time.Sleep(150 * time.Millisecond)
 	if !isRunning(cmd.Process.Pid) {
-		return 0, fmt.Errorf("ssh exited immediately (check output above)")
+		return nil, fmt.Errorf("ssh exited immediately (check output above)")
 	}
 
-	return cmd.Process.Pid, nil
+	return cmd, nil
 }
 
 func expandHome(p string) string {

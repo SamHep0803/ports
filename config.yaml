@@ -1,6 +1,6 @@
 profiles:
   - name: dev
-    host: 10.0.5.105
+    host: dev.lab.sml.wtf
     user: shepworth
     keyPath: ~/.ssh/id_ed25519
     forwards:
@@ -8,3 +8,7 @@ profiles:
         localPort: 3000
         remoteHost: 127.0.0.1
         remotePort: 3000
+      - bind: 127.0.0.1
+        localPort: 5173
+        remoteHost: 127.0.0.1
+        remotePort: 5173
