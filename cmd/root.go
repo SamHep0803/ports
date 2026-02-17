@@ -4,6 +4,7 @@ Copyright © 2026 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -18,24 +19,24 @@ var rootCmd = &cobra.Command{
 	Short: "Ports is an SSH port forward manager.",
 	Long: `An SSH port forwarding manager built by
 					SamHep0803 in go.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		configPath := "config.yaml"
 		cfg, err := app.LoadConfig(configPath)
 		if err != nil {
-			fatal("load config", err)
+			return fmt.Errorf("load config: %w", err)
 		}
 
 		sshRunner := ssh.NewSSHRunner()
 		mgr := app.NewManager(sshRunner)
+		defer mgr.StopAll()
 
 		model := tui.New(cfg.Profiles, mgr)
-		t := tea.NewProgram(model)
-
+		t := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 		if _, err := t.Run(); err != nil {
-			fatal("tui", err)
+			return fmt.Errorf("starting tui: %w", err)
 		}
 
-		defer mgr.StopAll()
+		return nil
 	},
 }
 

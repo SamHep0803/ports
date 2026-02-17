@@ -19,11 +19,11 @@ profiles:
     keyPath: ~/.ssh/id_ed25519
     forwards:
       - bind: 127.0.0.1
-        localPort: 3000
+        localPort: 3001
         remoteHost: 127.0.0.1
         remotePort: 3000
       - bind: 127.0.0.1
-        localPort: 5173
+        localPort: 5174
         remoteHost: 127.0.0.1
         remotePort: 5173
 
@@ -33,10 +33,10 @@ profiles:
     keyPath: ~/.ssh/id_ed25519
     forwards:
       - bind: 127.0.0.1
-        localPort: 3000
+        localPort: 3002
         remoteHost: 127.0.0.1
         remotePort: 3000
       - bind: 127.0.0.1
-        localPort: 5173
+        localPort: 5175
         remoteHost: 127.0.0.1
         remotePort: 5173
