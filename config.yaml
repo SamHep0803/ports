@@ -12,3 +12,31 @@ profiles:
         localPort: 5173
         remoteHost: 127.0.0.1
         remotePort: 5173
+
+  - name: dev2
+    host: dev.lab.sml.wtf
+    user: shepworth
+    keyPath: ~/.ssh/id_ed25519
+    forwards:
+      - bind: 127.0.0.1
+        localPort: 3000
+        remoteHost: 127.0.0.1
+        remotePort: 3000
+      - bind: 127.0.0.1
+        localPort: 5173
+        remoteHost: 127.0.0.1
+        remotePort: 5173
+
+  - name: dev3
+    host: dev.lab.sml.wtf
+    user: shepworth
+    keyPath: ~/.ssh/id_ed25519
+    forwards:
+      - bind: 127.0.0.1
+        localPort: 3000
+        remoteHost: 127.0.0.1
+        remotePort: 3000
+      - bind: 127.0.0.1
+        localPort: 5173
+        remoteHost: 127.0.0.1
+        remotePort: 5173

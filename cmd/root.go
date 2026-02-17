@@ -6,6 +6,10 @@ package cmd
 import (
 	"os"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/samhep0803/ports/internal/app"
+	"github.com/samhep0803/ports/internal/ssh"
+	"github.com/samhep0803/ports/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -14,7 +18,25 @@ var rootCmd = &cobra.Command{
 	Short: "Ports is an SSH port forward manager.",
 	Long: `An SSH port forwarding manager built by
 					SamHep0803 in go.`,
-	// Run: func(cmd *cobra.Command, args []string) {},
+	Run: func(cmd *cobra.Command, args []string) {
+		configPath := "config.yaml"
+		cfg, err := app.LoadConfig(configPath)
+		if err != nil {
+			fatal("load config", err)
+		}
+
+		sshRunner := ssh.NewSSHRunner()
+		mgr := app.NewManager(sshRunner)
+
+		model := tui.New(cfg.Profiles, mgr)
+		t := tea.NewProgram(model)
+
+		if _, err := t.Run(); err != nil {
+			fatal("tui", err)
+		}
+
+		defer mgr.StopAll()
+	},
 }
 
 func Execute() {

@@ -10,8 +10,10 @@ import (
 	"os/signal"
 	"syscall"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/samhep0803/ports/internal/app"
 	"github.com/samhep0803/ports/internal/ssh"
+	"github.com/samhep0803/ports/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -30,6 +32,14 @@ var startCmd = &cobra.Command{
 
 		sshRunner := ssh.NewSSHRunner()
 		mgr := app.NewManager(sshRunner)
+
+		model := tui.New(cfg.Profiles, mgr)
+		t := tea.NewProgram(model)
+
+		if _, err := t.Run(); err != nil {
+			fatal("tui", err)
+		}
+
 		defer mgr.StopAll()
 
 		sigc := make(chan os.Signal, 1)
