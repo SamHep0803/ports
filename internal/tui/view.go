@@ -5,50 +5,51 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
-func (m Model) View() string {
+func (m Model) View() tea.View {
+	var v tea.View
+
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+
 	if len(m.profiles) == 0 {
-		return "No profiles found.\nPress q to quit.\n"
+		v.SetContent("No profiles found.\nPress q to quit.\n")
+		return v
 	}
 
-	if m.width == 0 || m.height == 0 {
-		return m.basicView()
+	h := m.height
+	w := m.width
+
+	if m.width > 100 {
+		profilesW := w / 3
+		detailsW := w - profilesW
+
+		profiles := paneStyle.Width(profilesW).Height(h).Render(m.profilesPane())
+		details := paneStyle.Width(detailsW).Height(h).Render(m.detailsPane())
+
+		v.SetContent(lipgloss.JoinHorizontal(lipgloss.Top, profiles, details))
+	} else {
+		profilesH := h / 2
+		detailsH := h - profilesH
+
+		profiles := paneStyle.Width(w).Height(profilesH).Render(m.profilesPane())
+		details := paneStyle.Width(w).Height(detailsH).Render(m.detailsPane())
+
+		v.SetContent(lipgloss.JoinVertical(lipgloss.Right, profiles, details))
 	}
 
-	leftW := max(26, m.width/3)
-	rightW := max(26, m.width-leftW-4)
-
-	h := max(10, m.height-2)
-
-	left := paneStyle.Width(leftW).Height(h).Render(m.viewLeft())
-	right := paneStyle.Width(rightW).Height(h).Render(m.viewRight())
-
-	return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+	return v
 
 }
 
-func (m Model) basicView() string {
-	var out strings.Builder
-	out.WriteString("ports - SSH Port Forward Manager\n\n")
-
-	for i, p := range m.profiles {
-		cursor := " "
-		if i == m.cursor {
-			cursor = ">"
-		}
-
-		out.WriteString(cursor + " " + p.Name + "\n")
-	}
-
-	out.WriteString("\n j/k move - ret/s toggle tunnel - q quit\n")
-	return out.String()
-}
-
-func (m Model) viewLeft() string {
+func (m Model) profilesPane() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("Profiles") + "\n\n")
+
+	fmt.Fprintf(&b, "height: %d, width %d\n\n", m.height, m.width)
 
 	for i, p := range m.profiles {
 		cursor := " "
@@ -72,7 +73,7 @@ func (m Model) viewLeft() string {
 	return b.String()
 }
 
-func (m Model) viewRight() string {
+func (m Model) detailsPane() string {
 	p := m.profiles[m.cursor]
 
 	var b strings.Builder
@@ -87,7 +88,7 @@ func (m Model) viewRight() string {
 		b.WriteString("Status: stopped\n")
 	}
 
-	b.WriteString("\n" + titleStyle.Render("Forwards") + "\n")
+	b.WriteString("\n" + titleStyle.Render("Forwards (Local -> Remote)") + "\n")
 
 	if len(p.Forwards) == 0 {
 		b.WriteString(faintStyle.Render("No forwards configured.") + "\n")
@@ -102,7 +103,21 @@ func (m Model) viewRight() string {
 		}
 	}
 
-	// Reuse your existing message fields (if you have them)
+	b.WriteString("\n" + titleStyle.Render("Logs") + "\n")
+	logs := m.mgr.Logs(p.Name)
+	if len(logs) == 0 {
+		b.WriteString(faintStyle.Render("No logs yet.") + "\n")
+	} else {
+		start := 0
+		const showLast = 12
+		if len(logs) > showLast {
+			start = len(logs) - showLast
+		}
+		for _, line := range logs[start:] {
+			b.WriteString(line + "\n")
+		}
+	}
+
 	if m.info != "" {
 		b.WriteString("\n" + m.info + "\n")
 	}

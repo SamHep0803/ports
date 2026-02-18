@@ -1,10 +1,14 @@
 package ssh
 
 import (
+	"bufio"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -16,10 +20,11 @@ type SSHRunner struct{}
 
 func NewSSHRunner() *SSHRunner { return &SSHRunner{} }
 
-func (r *SSHRunner) Start(p app.Profile) (*exec.Cmd, error) {
+func (r *SSHRunner) Start(p app.Profile, onLog func(string)) (*exec.Cmd, error) {
 	args := []string{
 		"-N",
 		"-T",
+		"-o", "ExitOnForwardFailure=yes",
 		"-i", expandHome(p.KeyPath),
 	}
 
@@ -37,18 +42,25 @@ func (r *SSHRunner) Start(p app.Profile) (*exec.Cmd, error) {
 
 	cmd := exec.Command("ssh", args...)
 	cmd.Stdin = nil
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, err
+	}
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
+	go streamLogs(stdout, "OUT", onLog)
+	go streamLogs(stderr, "ERR", onLog)
 
-	time.Sleep(150 * time.Millisecond)
-	if !isRunning(cmd.Process.Pid) {
-		return nil, fmt.Errorf("ssh exited immediately (check output above)")
+	if err := waitForStartup(p, cmd.Process.Pid, 5*time.Second); err != nil {
+		return nil, err
 	}
 
 	return cmd, nil
@@ -86,4 +98,52 @@ func isRunning(pid int) bool {
 
 	err := syscall.Kill(pid, 0)
 	return err == nil
+}
+
+func streamLogs(r io.Reader, prefix string, onLog func(string)) {
+	if onLog == nil {
+		return
+	}
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		onLog(prefix + ": " + scanner.Text())
+	}
+}
+
+func waitForStartup(p app.Profile, pid int, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if !isRunning(pid) {
+			return fmt.Errorf("ssh exited during startup")
+		}
+
+		if forwardsListening(p) {
+			return nil
+		}
+
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	return fmt.Errorf("ssh did not become ready within %s", timeout)
+}
+
+func forwardsListening(p app.Profile) bool {
+	if len(p.Forwards) == 0 {
+		return true
+	}
+	for _, f := range p.Forwards {
+		bind := f.Bind
+		if bind == "" || bind == "0.0.0.0" || bind == "::" {
+			bind = "127.0.0.1"
+		}
+
+		addr := net.JoinHostPort(bind, strconv.Itoa(f.LocalPort))
+		conn, err := net.DialTimeout("tcp", addr, 120*time.Millisecond)
+		if err != nil {
+			return false
+		}
+		_ = conn.Close()
+	}
+
+	return true
 }

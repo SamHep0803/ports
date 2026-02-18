@@ -1,7 +1,7 @@
 package tui
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/samhep0803/ports/internal/app"
 )
 
@@ -25,5 +25,5 @@ func New(profiles []app.Profile, mgr *app.Manager) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return nil
+	return refreshCmd()
 }

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/samhep0803/ports/internal/app"
 	"github.com/samhep0803/ports/internal/ssh"
 	"github.com/samhep0803/ports/internal/tui"
@@ -31,7 +31,7 @@ var rootCmd = &cobra.Command{
 		defer mgr.StopAll()
 
 		model := tui.New(cfg.Profiles, mgr)
-		t := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
+		t := tea.NewProgram(model)
 		if _, err := t.Run(); err != nil {
 			return fmt.Errorf("starting tui: %w", err)
 		}

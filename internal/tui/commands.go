@@ -1,7 +1,9 @@
 package tui
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
 	"github.com/samhep0803/ports/internal/app"
 )
 
@@ -16,6 +18,8 @@ type stoppedMsg struct {
 	err  error
 }
 
+type refreshMsg struct{}
+
 func startProfileCmd(mgr *app.Manager, p app.Profile) tea.Cmd {
 	return func() tea.Msg {
 		pid, err := mgr.Start(p)
@@ -28,4 +32,10 @@ func stopProfileCmd(mgr *app.Manager, name string) tea.Cmd {
 		err := mgr.Stop(name)
 		return stoppedMsg{name: name, err: err}
 	}
+}
+
+func refreshCmd() tea.Cmd {
+	return tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg {
+		return refreshMsg{}
+	})
 }
